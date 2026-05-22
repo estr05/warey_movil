@@ -1,0 +1,60 @@
+name: mobile_app
+description: "DevUbi / Warey — Cliente móvil para monitoreo de ubicación en tiempo real."
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.11.1
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # Íconos estilo Cupertino para iOS
+  cupertino_icons: ^1.0.8
+
+  # ── Red ──────────────────────────────────────────────────────────────────────
+  dio: ^5.7.0                        # Cliente HTTP con interceptors para Sanctum
+
+  # ── Estado y Rutas ───────────────────────────────────────────────────────────
+  flutter_riverpod: ^2.6.1           # Gestión de estado reactiva y predecible
+  go_router: ^14.6.2                 # Enrutamiento declarativo
+
+  # ── Seguridad y Hardware ──────────────────────────────────────────────────────
+  flutter_secure_storage: ^9.2.2     # Almacenamiento cifrado del token Sanctum
+  device_info_plus: ^11.1.1          # Extracción del UUID de hardware (Android/iOS)
+
+  # ── Persistencia Local (Offline Queue) ───────────────────────────────────────
+  sqflite: ^2.4.2                    # Base de datos SQLite local para la cola offline
+  path: ^1.9.1                       # Construcción de rutas para la BD SQLite
+
+  # ── Conectividad ─────────────────────────────────────────────────────────────
+  connectivity_plus: ^6.1.4          # Detección de estado de red (wifi/cellular/none)
+
+  # ── Generación de código (runtime) ───────────────────────────────────────────
+  freezed_annotation: ^2.4.4
+  json_annotation: ^4.9.0
+
+  # ── Sensores de Hardware (GPS + Batería) ────────────────────────────────────
+  geolocator: ^13.0.2                  # Lectura de coordenadas GPS reales del hardware
+  battery_plus: ^6.0.3                 # Nivel de batería y estado de carga reales
+
+  # ── Servicio en Primer Plano (Paso 6) ────────────────────────────────────────
+  flutter_background_service: ^5.0.12  # Isolate nativo Android Foreground / iOS BGTask
+  flutter_local_notifications: ^17.2.4 # Canal de notificación persistente
+  permission_handler: ^11.4.0          # Permisos de ubicación y notificaciones
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+  flutter_lints: ^6.0.0
+
+  # ── Generadores de código ─────────────────────────────────────────────────────
+  build_runner: ^2.4.13              # Runner para ejecutar los generadores
+  freezed: ^2.5.7                    # Genera modelos inmutables (copyWith, ==, etc.)
+  json_serializable: ^6.8.0          # Genera fromJson / toJson automáticamente
+
+flutter:
+  uses-material-design: true
