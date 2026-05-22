@@ -4,12 +4,16 @@
 // Pantalla de administración del nodo de telemetría activo.
 // Muestra el estado del servicio en tiempo real y permite desconectar el nodo.
 
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:battery_plus/battery_plus.dart';
+import 'package:geolocator/geolocator.dart';
 
 import '../../../../core/services/background_service.dart';
 import '../../../../core/services/secure_storage_service.dart';
 import '../../../../core/router/app_router.dart';
+import '../../../../core/services/local_database_service.dart';
 
 class DashboardPage extends ConsumerStatefulWidget {
   const DashboardPage({super.key});
@@ -20,6 +24,16 @@ class DashboardPage extends ConsumerStatefulWidget {
 
 class _DashboardPageState extends ConsumerState<DashboardPage> with SingleTickerProviderStateMixin {
   late AnimationController _pulseController;
+  
+  // Real-time data state
+  final Battery _battery = Battery();
+  int _batteryLevel = 100;
+  bool _isCharging = false;
+  int _offlineQueueCount = 0;
+  String _gpsAccuracy = 'Calculando...';
+  
+  StreamSubscription<BatteryState>? _batteryStateSubscription;
+  Timer? _pollingTimer;
 
   @override
   void initState() {
@@ -28,11 +42,65 @@ class _DashboardPageState extends ConsumerState<DashboardPage> with SingleTicker
       vsync: this,
       duration: const Duration(seconds: 2),
     )..repeat(reverse: true);
+    
+    _initRealTimeData();
+  }
+
+  Future<void> _initRealTimeData() async {
+    // 1. Listen to charging state changes in real-time
+    _batteryStateSubscription = _battery.onBatteryStateChanged.listen((BatteryState state) {
+      if (mounted) {
+        setState(() {
+          _isCharging = state == BatteryState.charging;
+        });
+      }
+    });
+    
+    // 2. Fetch initial battery level
+    _batteryLevel = await _battery.batteryLevel;
+    if (mounted) setState(() {});
+
+    // 3. Start a timer to poll local DB and GPS accuracy every 3 seconds
+    _pollingTimer = Timer.periodic(const Duration(seconds: 3), (timer) async {
+      _pollData();
+    });
+    
+    // Initial fetch
+    _pollData();
+  }
+  
+  Future<void> _pollData() async {
+    // Get battery level
+    final level = await _battery.batteryLevel;
+    
+    // Get offline queue count from local DB
+    final count = await ref.read(localDatabaseProvider).getPendingFramesCount();
+    
+    // Get last known GPS accuracy (cheap, doesn't wake GPS hardware heavily)
+    String accuracyStr = 'Desconocida';
+    try {
+      final position = await Geolocator.getLastKnownPosition();
+      if (position != null) {
+        accuracyStr = '± ${position.accuracy.toStringAsFixed(1)} metros';
+      }
+    } catch (e) {
+      // Ignorar errores de GPS en UI
+    }
+
+    if (mounted) {
+      setState(() {
+        _batteryLevel = level;
+        _offlineQueueCount = count;
+        _gpsAccuracy = accuracyStr;
+      });
+    }
   }
 
   @override
   void dispose() {
     _pulseController.dispose();
+    _batteryStateSubscription?.cancel();
+    _pollingTimer?.cancel();
     super.dispose();
   }
 
@@ -251,25 +319,25 @@ class _DashboardPageState extends ConsumerState<DashboardPage> with SingleTicker
                 ),
                 child: Column(
                   children: [
-                    const _TelemetryDataRow(
+                    _TelemetryDataRow(
                       label: 'Precisión GPS',
-                      value: '± 4.2 metros',
+                      value: _gpsAccuracy,
                       icon: Icons.gps_fixed,
                       color: Colors.tealAccent,
                     ),
                     Divider(color: const Color(0xFF334155).withValues(alpha: 0.5), height: 24),
-                    const _TelemetryDataRow(
+                    _TelemetryDataRow(
                       label: 'Batería del Nodo',
-                      value: '100% (Cargando)',
-                      icon: Icons.battery_charging_full,
-                      color: Colors.amberAccent,
+                      value: '$_batteryLevel% (${_isCharging ? 'Cargando' : 'Descargando'})',
+                      icon: _isCharging ? Icons.battery_charging_full : Icons.battery_full,
+                      color: _isCharging ? Colors.amberAccent : (_batteryLevel > 20 ? Colors.greenAccent : Colors.redAccent),
                     ),
                     Divider(color: const Color(0xFF334155).withValues(alpha: 0.5), height: 24),
-                    const _TelemetryDataRow(
+                    _TelemetryDataRow(
                       label: 'Cola Offline',
-                      value: '0 frames pendientes',
+                      value: '$_offlineQueueCount frames pendientes',
                       icon: Icons.cloud_done_outlined,
-                      color: Colors.lightBlueAccent,
+                      color: _offlineQueueCount > 0 ? Colors.orangeAccent : Colors.lightBlueAccent,
                     ),
                   ],
                 ),

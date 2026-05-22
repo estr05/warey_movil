@@ -8,6 +8,9 @@
 // REGLA CRÍTICA: onStart y onIosBackground son funciones TOP-LEVEL
 // obligatoriamente. No pueden ser métodos de clase. El isolate del OS
 // los llama directamente por nombre mediante @pragma('vm:entry-point').
+//
+// v2: Usa TrackingEngine en lugar de TelemetryEngine.
+//     Centraliza estados, timers, geofencing y sincronización.
 
 import 'dart:developer' as dev;
 import 'dart:ui';
@@ -17,23 +20,21 @@ import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../features/telemetry/domain/engines/telemetry_engine.dart';
+import '../../features/tracking/domain/engines/tracking_engine.dart';
 
 // ── Constantes del canal de notificación ─────────────────────────────────────
 
-const String _kChannelId = 'devubi_telemetry';
+const String _kChannelId = 'devubi_tracking';
 const String _kChannelName = 'DevUbi Node Active';
-const String _kChannelDescription = 'Servicio de telemetría activo en primer plano.';
+const String _kChannelDescription = 'Servicio de rastreo activo en primer plano.';
 const int _kNotificationId = 888;
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ENTRY POINTS DEL ISOLATE (deben ser funciones TOP-LEVEL)
-// @pragma('vm:entry-point') previene que el tree-shaker elimine estas funciones
-// ya que el linker no puede trazar su referencia en el manifest nativo.
+// ENTRY POINTS DEL ISOLATE (funciones TOP-LEVEL obligatorias)
+// @pragma('vm:entry-point') previene que el tree-shaker elimine estas funciones.
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// Entry point de iOS para tareas en background (BGProcessingTask).
-/// Debe retornar true para indicar que el sistema puede mantener la app viva.
 @pragma('vm:entry-point')
 Future<bool> onIosBackground(ServiceInstance service) async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -44,21 +45,19 @@ Future<bool> onIosBackground(ServiceInstance service) async {
 
 /// Entry point principal del isolate de background — Android Foreground + iOS Foreground.
 ///
-/// Este método corre en un hilo Dart completamente separado de la UI.
+/// Corre en un hilo Dart completamente separado de la UI.
 /// No tiene acceso al BuildContext, ProviderScope de la UI, ni a widgets.
-/// Debe inicializar sus propias instancias de plugins y providers.
 @pragma('vm:entry-point')
 void onStart(ServiceInstance service) async {
-  // 1. Inicializar el binding de Flutter en este isolate secundario
+  // 1. Inicializar los bindings de Flutter en este isolate secundario
   WidgetsFlutterBinding.ensureInitialized();
 
-  // 2. Registrar todos los plugins nativos en este nuevo isolate
-  //    Sin esto, sqflite, secure_storage, etc. no funcionan aquí.
+  // 2. Registrar todos los plugins nativos en este isolate
   DartPluginRegistrant.ensureInitialized();
 
   dev.log('[BgService] Isolate de background iniciado.', name: 'BackgroundService');
 
-  // 3. Actualizar el contenido de la notificación persistente (Android)
+  // 3. Actualizar la notificación persistente (Android)
   if (service is AndroidServiceInstance) {
     service.on('setAsForeground').listen((_) {
       service.setAsForegroundService();
@@ -69,20 +68,22 @@ void onStart(ServiceInstance service) async {
 
     service.setForegroundNotificationInfo(
       title: _kChannelName,
-      content: 'Transmitiendo telemetría...',
+      content: 'Rastreo inteligente activo...',
     );
   }
 
   // 4. Crear un ProviderContainer LOCAL para este isolate.
   //    NO se puede usar el ProviderScope de la UI (vive en otro isolate).
-  //    Este container tiene acceso a los mismos providers stateless (Dio, SQLite, etc.)
   final container = ProviderContainer();
 
-  // 5. Leer el TelemetryEngine e iniciar el loop de captura periódica
-  final engine = container.read(telemetryEngineProvider);
+  // 5. Iniciar el TrackingEngine — motor centralizado de rastreo inteligente
+  final engine = container.read(trackingEngineProvider);
   engine.start();
 
-  dev.log('[BgService] TelemetryEngine arrancado dentro del isolate.', name: 'BackgroundService');
+  dev.log(
+    '[BgService] TrackingEngine iniciado (geofencing + estados dinámicos).',
+    name: 'BackgroundService',
+  );
 
   // 6. Escuchar la orden de parada limpia desde la UI
   service.on('stopService').listen((_) {
@@ -91,6 +92,14 @@ void onStart(ServiceInstance service) async {
     container.dispose();
     service.stopSelf();
     dev.log('[BgService] Isolate terminado correctamente.', name: 'BackgroundService');
+  });
+
+  // 7. Escuchar actualizaciones de zonas seguras desde la UI
+  service.on('updateGeofenceZones').listen((data) {
+    // data: { 'zones': [ { 'id', 'name', 'latitude', 'longitude', 'radius' } ] }
+    dev.log('[BgService] Actualización de zonas recibida.', name: 'BackgroundService');
+    // El TrackingEngine es responsable de parsear y actualizar las zonas.
+    // Este canal es el puente entre el isolate de UI y el de background.
   });
 }
 
@@ -128,7 +137,10 @@ class BackgroundServiceManager {
             AndroidFlutterLocalNotificationsPlugin>()
         ?.createNotificationChannel(channel);
 
-    dev.log('[BgService] Canal de notificación "$_kChannelId" creado.', name: 'BackgroundServiceManager');
+    dev.log(
+      '[BgService] Canal de notificación "$_kChannelId" creado.',
+      name: 'BackgroundServiceManager',
+    );
 
     // ── 2. Configurar FlutterBackgroundService ────────────────────────────
     final service = FlutterBackgroundService();
@@ -140,7 +152,7 @@ class BackgroundServiceManager {
         isForegroundMode: true,
         notificationChannelId: _kChannelId,
         initialNotificationTitle: _kChannelName,
-        initialNotificationContent: 'Listo para transmitir...',
+        initialNotificationContent: 'Rastreo inteligente listo...',
         foregroundServiceNotificationId: _kNotificationId,
       ),
       iosConfiguration: IosConfiguration(
@@ -150,10 +162,13 @@ class BackgroundServiceManager {
       ),
     );
 
-    dev.log('[BgService] FlutterBackgroundService configurado (autoStart: false).', name: 'BackgroundServiceManager');
+    dev.log(
+      '[BgService] FlutterBackgroundService configurado (autoStart: false).',
+      name: 'BackgroundServiceManager',
+    );
   }
 
-  /// Inicia el servicio en primer plano desde la UI (ej. al vincular el dispositivo).
+  /// Inicia el servicio en primer plano (ej. al vincular el dispositivo).
   static Future<void> startService() async {
     final service = FlutterBackgroundService();
     final isRunning = await service.isRunning();
@@ -165,7 +180,7 @@ class BackgroundServiceManager {
     }
   }
 
-  /// Detiene el servicio enviando la señal al isolate para un cierre limpio.
+  /// Detiene el servicio enviando la señal al isolate para cierre limpio.
   static void stopService() {
     FlutterBackgroundService().invoke('stopService');
     dev.log('[BgService] Señal de parada enviada.', name: 'BackgroundServiceManager');
