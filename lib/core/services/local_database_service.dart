@@ -19,7 +19,7 @@ import 'package:sqflite/sqflite.dart';
 class LocalDatabaseService {
   // ── Constantes de esquema ───────────────────────────────────────────────────
   static const String _dbName = 'devubi_telemetry.db';
-  static const int _dbVersion = 3; // v3: movement_type + smoothed_speed en offline_location
+  static const int _dbVersion = 4; // v4: screen_active en offline_device_status
 
   // ── Nombres de tabla ────────────────────────────────────────────────────────
   static const String _tableTelemetry = 'offline_telemetry';
@@ -52,6 +52,7 @@ class LocalDatabaseService {
   static const String colSignalStrength = 'signal_strength';
   static const String colHasInternet = 'has_internet';
   static const String colActivityStatus = 'activity_status';
+  static const String colScreenActive = 'screen_active';
 
   // ── Singleton ───────────────────────────────────────────────────────────────
   Database? _db;
@@ -101,6 +102,18 @@ class LocalDatabaseService {
         dev.log('[LocalDB] Migración v2→v3: columnas ya existentes — omitida.', name: 'LocalDatabaseService');
       }
     }
+    if (oldVersion < 4) {
+      // v3 → v4: agregar screen_active a offline_device_status.
+      // DEFAULT -1 representa null (estado desconocido) para filas existentes.
+      try {
+        await db.execute(
+          'ALTER TABLE $_tableDeviceStatus ADD COLUMN $colScreenActive INTEGER NOT NULL DEFAULT -1',
+        );
+        dev.log('[LocalDB] Migración v3→v4: columna screen_active agregada.', name: 'LocalDatabaseService');
+      } catch (e) {
+        dev.log('[LocalDB] Migración v3→v4: columna ya existente — omitida.', name: 'LocalDatabaseService');
+      }
+    }
   }
 
   Future<void> _createTableTelemetryLegacy(Database db) async {
@@ -147,6 +160,7 @@ class LocalDatabaseService {
         $colHasInternet     INTEGER NOT NULL DEFAULT 0,
         $colTrackingState   TEXT    NOT NULL,
         $colActivityStatus  TEXT    NOT NULL,
+        $colScreenActive    INTEGER NOT NULL DEFAULT -1,
         $colCapturedAt      TEXT    NOT NULL
       )
     ''');

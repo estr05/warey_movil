@@ -96,6 +96,21 @@ class TrackingEngine {
   // ── Última posición conocida ──────────────────────────────────────────────
   Position? _lastKnownPosition;
 
+  /// Estado actual de la pantalla del dispositivo.
+  /// Se inicializa en [true] (pantalla encendida al arrancar el servicio).
+  /// Actualizable externamente mediante [setScreenActive] desde el observador
+  /// de ciclo de vida de la app (AppLifecycleState).
+  bool? _isScreenActive = true;
+
+  /// Notifica al motor si la pantalla del dispositivo está encendida o apagada.
+  /// Debe llamarse desde el widget raíz usando [WidgetsBindingObserver]:
+  ///   - [AppLifecycleState.resumed]  → setScreenActive(true)
+  ///   - [AppLifecycleState.paused]   → setScreenActive(false)
+  ///   - [AppLifecycleState.inactive] → setScreenActive(false)
+  void setScreenActive(bool isActive) {
+    _isScreenActive = isActive;
+  }
+
   TrackingEngine(this._ref) {
     _geofence = _ref.read(geofenceServiceProvider);
     _classifier = MovementClassifier();
@@ -315,6 +330,7 @@ class TrackingEngine {
         hasInternetAccess: hasInternet,
         trackingState: _currentState.displayName,
         activityStatus: activityStatus,
+        screenActive: _isScreenActive,
         capturedAt: DateTime.now(),
       );
 

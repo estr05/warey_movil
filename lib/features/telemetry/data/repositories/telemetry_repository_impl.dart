@@ -82,7 +82,7 @@ class TelemetryRepositoryImpl {
       'battery_level': battery,
       'is_charging': isCharging ? 1 : 0, // SQLite no tiene BOOLEAN nativo
       'connection_type': connectionType,
-      'created_at': DateTime.now().toIso8601String(),
+      'captured_at': DateTime.now().toIso8601String(),
     };
   }
 
@@ -107,7 +107,7 @@ class TelemetryRepositoryImpl {
           // El backend espera boolean real, no 0/1
           'is_charging': (payload['is_charging'] as int) == 1,
           'connection_type': payload['connection_type'],
-          'created_at': payload['created_at'],
+          'captured_at': payload['captured_at'],
         },
       );
 

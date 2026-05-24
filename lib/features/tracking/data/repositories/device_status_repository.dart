@@ -99,7 +99,7 @@ class DeviceStatusRepository {
   Future<bool> _trySendToApi(DeviceStatusFrame frame) async {
     try {
       final response = await _dio.post<Map<String, dynamic>>(
-        'telemetry',
+        'device-status',
         data: frame.toApiJson(),
       );
       final status = response.statusCode ?? 0;
