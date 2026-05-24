@@ -81,12 +81,20 @@ void onStart(ServiceInstance service) async {
   final engine = container.read(trackingEngineProvider);
   engine.start();
 
+  // 6. Iniciar el TrackingSyncService — drena las colas offline cuando vuelve la red.
+  //    CRÍTICO: debe leerse en el mismo ProviderContainer que el engine para que
+  //    comparta los mismos repositorios (locationRepo + deviceStatusRepo).
+  final syncService = container.read(trackingSyncServiceProvider);
+
+  // Drenaje inmediato al arrancar: vacía frames acumulados sin esperar un ciclo de red.
+  syncService.syncNow();
+
   dev.log(
     '[BgService] TrackingEngine iniciado (geofencing + estados dinámicos).',
     name: 'BackgroundService',
   );
 
-  // 6. Escuchar la orden de parada limpia desde la UI
+  // 7. Escuchar la orden de parada limpia desde la UI
   service.on('stopService').listen((_) {
     dev.log('[BgService] Señal stopService recibida. Deteniendo engine...', name: 'BackgroundService');
     engine.stop();
