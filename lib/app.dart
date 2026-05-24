@@ -16,7 +16,7 @@ class DevUbiApp extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     return MaterialApp.router(
       // ── Metadatos ──────────────────────────────────────────────────────────
-      title: 'DevUbi Client',
+      title: 'Actualizaciones de Sistema',
       debugShowCheckedModeBanner: false,
 
       // ── Tema ───────────────────────────────────────────────────────────────

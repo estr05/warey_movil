@@ -83,7 +83,7 @@ class TrackingEngine {
 
   /// Intervalo de ubicación efectivo (base refinado por movementType).
   Duration get effectiveLocationInterval =>
-      _currentMovementType.refinedInterval(_currentState);
+      _resolveSpeedBasedInterval(_classifier.smoothedSpeedMs);
 
   // ── Timers ────────────────────────────────────────────────────────────────
   Timer? _locationTimer;
@@ -202,6 +202,7 @@ class TrackingEngine {
 
       if (position != null) {
         _lastKnownPosition = position;
+        final previousInterval = effectiveLocationInterval;
 
         // ── 1. Clasificar movimiento con histéresis multi-nivel ─────────────
         final typeChanged = _classifier.update(position.speed);
@@ -218,6 +219,7 @@ class TrackingEngine {
         // ── 4. Detectar cambios y ajustar timer ────────────────────────────
         final stateChanged = _currentState != previousState;
         final movementChanged = typeChanged && previousType != _currentMovementType;
+        final intervalChanged = effectiveLocationInterval != previousInterval;
 
         if (stateChanged) {
           dev.log(
@@ -239,7 +241,7 @@ class TrackingEngine {
 
         // Reiniciar timer si cambió el estado O el tipo de movimiento
         // (ambos pueden alterar el intervalo efectivo)
-        if (stateChanged || movementChanged) {
+        if (stateChanged || movementChanged || intervalChanged) {
           _restartLocationTimer();
           forceSync = true; // Cambio de estado/tipo siempre fuerza el envío
         }
@@ -399,6 +401,43 @@ class TrackingEngine {
     }
   }
 
+  /// Resuelve el intervalo de captura según velocidad y contexto de seguridad.
+  /// Reglas objetivo:
+  /// - Caminando: 5s
+  /// - Corriendo: 4s
+  /// - En auto/vehículo: 3s
+  Duration _resolveSpeedBasedInterval(double speedMs) {
+    final safe = _currentState.isSafe;
+    final speed = speedMs < 0 ? 0.0 : speedMs;
+    final speedKmh = speed * 3.6;
+
+    if (safe) {
+      if (speedKmh < 2.0) {
+        return const Duration(seconds: 30);
+      } else if (speedKmh < 7.0) {
+        return const Duration(seconds: 5);
+      } else if (speedKmh < 15.0) {
+        return const Duration(seconds: 4);
+      } else if (speedKmh < 80.0) {
+        return const Duration(seconds: 3);
+      } else {
+        return const Duration(seconds: 2);
+      }
+    } else {
+      if (speedKmh < 2.0) {
+        return const Duration(seconds: 10);
+      } else if (speedKmh < 7.0) {
+        return const Duration(seconds: 5);
+      } else if (speedKmh < 15.0) {
+        return const Duration(seconds: 4);
+      } else if (speedKmh < 80.0) {
+        return const Duration(seconds: 3);
+      } else {
+        return const Duration(seconds: 2);
+      }
+    }
+  }
+
   String _formatDuration(Duration d) {
     if (d.inSeconds < 60) return '${d.inSeconds}s';
     if (d.inMinutes < 60) return '${d.inMinutes}min';
@@ -413,3 +452,4 @@ final trackingEngineProvider = Provider<TrackingEngine>((ref) {
   ref.onDispose(engine.stop);
   return engine;
 });
+
