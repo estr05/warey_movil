@@ -21,6 +21,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../features/tracking/domain/engines/tracking_engine.dart';
+import '../../features/tracking/domain/services/tracking_sync_service.dart';
 
 // ── Constantes del canal de notificación ─────────────────────────────────────
 
