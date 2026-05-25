@@ -176,14 +176,16 @@ class HandshakeNotifier extends StateNotifier<HandshakeState> {
         try {
           final dio = _ref.read(dioProvider);
           final response = await dio.get<Map<String, dynamic>>('device/safe-places');
-          final data = response.data?['data'];
-          if (data is List) {
-            final zones = data.map((z) => GeofenceZone.fromJson(z)).toList();
+          final data = response.data;
+          if (data != null && data['success'] == true && data['data'] != null) {
+            final zones = (data['data'] as List)
+                .map((z) => GeofenceZone.fromJson(z as Map<String, dynamic>))
+                .toList();
             _ref.read(geofenceServiceProvider).updateZones(zones);
           }
         } catch (e) {
-          // Si falla la carga, el geofencing local arranca con lista vacía
-          dev.log('[Handshake] Error cargando zonas seguras: $e');
+          // Fallo silencioso — el tracking arranca con zonas vacías
+          dev.log('[Handshake] No se pudieron cargar zonas seguras: $e');
         }
         state = Success(device);
         return;

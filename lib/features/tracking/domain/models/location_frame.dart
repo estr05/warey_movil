@@ -33,6 +33,10 @@ class LocationFrame {
   /// Altitud en metros sobre el nivel del mar.
   final double? altitude;
 
+  /// Orientación del dispositivo en grados (0=norte, 90=este, 180=sur, 270=oeste).
+  /// Proviene de position.heading del GPS. Null si no está disponible.
+  final double? bearing;
+
   /// Tipo de movimiento clasificado (STATIC/WALKING/RUNNING/VEHICLE).
   final MovementType movementType;
 
@@ -48,7 +52,6 @@ class LocationFrame {
   final double? speedKmh;
   final int? intervaloAplicado;
   final String? motivo;
-  final double? bearing;
 
   /// Timestamp de captura de la ubicación.
   final DateTime capturedAt;
@@ -60,6 +63,7 @@ class LocationFrame {
     this.speedMs,
     this.smoothedSpeedMs,
     this.altitude,
+    this.bearing,
     this.movementType = MovementType.static_,
     required this.trackingState,
     required this.isInsideSafeZone,
@@ -67,7 +71,6 @@ class LocationFrame {
     this.speedKmh,
     this.intervaloAplicado,
     this.motivo,
-    this.bearing,
     required this.capturedAt,
   });
 
@@ -79,6 +82,7 @@ class LocationFrame {
         'speed': speedMs,
         'smoothed_speed': smoothedSpeedMs,
         'altitude': altitude,
+        'bearing': bearing,
         'movement_type': movementType.apiName,
         'tracking_state': trackingState,
         'is_safe_zone': isInsideSafeZone,
@@ -86,7 +90,6 @@ class LocationFrame {
         'speed_kmh': speedKmh,
         'intervalo_aplicado': intervaloAplicado,
         'motivo': motivo,
-        'bearing': bearing,
         'captured_at': capturedAt.toIso8601String(),
       };
 
@@ -98,6 +101,7 @@ class LocationFrame {
         'speed': speedMs,
         'smoothed_speed': smoothedSpeedMs,
         'altitude': altitude,
+        'bearing': bearing,
         'movement_type': movementType.apiName,
         'tracking_state': trackingState,
         'is_safe_zone': isInsideSafeZone ? 1 : 0,
@@ -105,7 +109,6 @@ class LocationFrame {
         'speed_kmh': speedKmh,
         'intervalo_aplicado': intervaloAplicado,
         'motivo': motivo,
-        'bearing': bearing,
         'captured_at': capturedAt.toIso8601String(),
       };
 
@@ -125,6 +128,7 @@ class LocationFrame {
       altitude: map['altitude'] != null
           ? (map['altitude'] as num).toDouble()
           : null,
+      bearing: map['bearing'] != null ? (map['bearing'] as num).toDouble() : null,
       movementType: MovementTypeX.fromString(map['movement_type'] as String?),
       trackingState: map['tracking_state'] as String? ?? 'UNKNOWN',
       isInsideSafeZone: (map['is_safe_zone'] as int? ?? 0) == 1,
@@ -132,7 +136,6 @@ class LocationFrame {
       speedKmh: map['speed_kmh'] != null ? (map['speed_kmh'] as num).toDouble() : null,
       intervaloAplicado: map['intervalo_aplicado'] as int?,
       motivo: map['motivo'] as String?,
-      bearing: map['bearing'] != null ? (map['bearing'] as num).toDouble() : null,
       capturedAt: DateTime.parse(map['captured_at'] as String),
     );
   }
