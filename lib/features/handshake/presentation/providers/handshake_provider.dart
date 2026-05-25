@@ -4,17 +4,18 @@
 // Controla el ciclo de vida UX del pairing. No valida seguridad localmente.
 
 import 'dart:developer' as dev;
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/repositories/handshake_repository_impl.dart';
+import '../../../tracking/domain/models/geofence_zone.dart';
+import '../../../tracking/domain/services/geofence_service.dart';
+import '../../../../core/network/dio_client.dart';
 import '../../domain/repositories/handshake_repository.dart';
 import '../../../../core/services/device_uuid_service.dart';
 import '../../../../core/services/secure_storage_service.dart';
 import '../../../../core/services/background_service.dart';
 import '../../../../core/router/app_router.dart';
-import '../../../../core/network/dio_client.dart';
-import '../../../tracking/domain/services/geofence_service.dart';
-import '../../../tracking/domain/models/geofence_zone.dart';
 
 // Definicion de estados
 
@@ -156,7 +157,6 @@ class HandshakeNotifier extends StateNotifier<HandshakeState> {
       confirmReplacement ? 'Confirmando reemplazo...' : 'Validando codigo...',
     );
 
-    _lastFingerprint ??= await _deviceUuidService.getDeviceFingerprint();
 
     final result = await _repository.validatePairingCode(
       code: pairingCode,
@@ -171,8 +171,8 @@ class HandshakeNotifier extends StateNotifier<HandshakeState> {
     switch (result) {
       case HandshakeSuccess(:final device):
         _cooldownUntil = null;
-        await BackgroundServiceManager.startService();
-        // Cargar zonas seguras desde el backend
+        // Cargar zonas seguras desde el backend ANTES de iniciar el tracking
+        // para evitar frames iniciales con isInsideSafeZone = false
         try {
           final dio = _ref.read(dioProvider);
           final response = await dio.get<Map<String, dynamic>>('device/safe-places');
@@ -187,6 +187,7 @@ class HandshakeNotifier extends StateNotifier<HandshakeState> {
           // Fallo silencioso — el tracking arranca con zonas vacías
           dev.log('[Handshake] No se pudieron cargar zonas seguras: $e');
         }
+        await BackgroundServiceManager.startService();
         state = Success(device);
         return;
 

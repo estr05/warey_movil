@@ -283,6 +283,7 @@ class TrackingEngine {
           speedMs: position.speed >= 0 ? position.speed : null,
           smoothedSpeedMs: _classifier.smoothedSpeedMs,
           altitude: position.altitude,
+          bearing: position.heading.isNaN ? null : position.heading,
           movementType: _currentMovementType,
           trackingState: _currentState.displayName,
           isInsideSafeZone: _geofence.isInsideSafeZone,
@@ -290,7 +291,6 @@ class TrackingEngine {
           speedKmh: _classifier.smoothedSpeedKmh,
           intervaloAplicado: effectiveLocationInterval.inSeconds,
           motivo: motivo,
-          bearing: position.heading.isNaN ? null : position.heading,
           capturedAt: DateTime.now(),
         );
 
@@ -304,6 +304,7 @@ class TrackingEngine {
             latitude: pos.latitude,
             longitude: pos.longitude,
             smoothedSpeedMs: _classifier.smoothedSpeedMs,
+            bearing: pos.heading.isNaN ? null : pos.heading,
             movementType: _currentMovementType,
             trackingState: _currentState.displayName,
             isInsideSafeZone: _geofence.isInsideSafeZone,
@@ -311,7 +312,6 @@ class TrackingEngine {
             speedKmh: _classifier.smoothedSpeedKmh,
             intervaloAplicado: effectiveLocationInterval.inSeconds,
             motivo: 'FORCE_SYNC',
-            bearing: pos.heading.isNaN ? null : pos.heading,
             capturedAt: DateTime.now(),
           );
           await _locationRepo.processLocationFrame(frame, forceSync: true);

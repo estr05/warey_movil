@@ -19,7 +19,7 @@ import 'package:sqflite/sqflite.dart';
 class LocalDatabaseService {
   // ── Constantes de esquema ───────────────────────────────────────────────────
   static const String _dbName = 'devubi_telemetry.db';
-  static const int _dbVersion = 4; // v4: screen_active en offline_device_status
+  static const int _dbVersion = 5; // v5: bearing en offline_location
 
   // ── Nombres de tabla ────────────────────────────────────────────────────────
   static const String _tableTelemetry = 'offline_telemetry';
@@ -46,6 +46,7 @@ class LocalDatabaseService {
   static const String colTrackingState = 'tracking_state';
   static const String colIsSafeZone = 'is_safe_zone';
   static const String colZoneName = 'zone_name';
+  static const String colBearing = 'bearing';
   static const String colCapturedAt = 'captured_at';
 
   // Columnas de estado del dispositivo (nueva arquitectura)
@@ -114,6 +115,15 @@ class LocalDatabaseService {
         dev.log('[LocalDB] Migración v3→v4: columna ya existente — omitida.', name: 'LocalDatabaseService');
       }
     }
+    if (oldVersion < 5) {
+      // v4 → v5: agregar bearing a offline_location
+      try {
+        await db.execute('ALTER TABLE $_tableLocation ADD COLUMN $colBearing REAL');
+        dev.log('[LocalDB] Migración v4→v5: columna bearing agregada.', name: 'LocalDatabaseService');
+      } catch (e) {
+        dev.log('[LocalDB] Migración v4→v5: columna ya existente — omitida.', name: 'LocalDatabaseService');
+      }
+    }
   }
 
   Future<void> _createTableTelemetryLegacy(Database db) async {
@@ -140,6 +150,7 @@ class LocalDatabaseService {
         $colSpeed           REAL,
         $colSmoothedSpeed   REAL,
         $colAltitude        REAL,
+        $colBearing         REAL,
         $colMovementType    TEXT,
         $colTrackingState   TEXT    NOT NULL,
         $colIsSafeZone      INTEGER NOT NULL DEFAULT 0,

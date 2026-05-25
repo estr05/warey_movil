@@ -128,7 +128,9 @@ class LocationFrame {
       altitude: map['altitude'] != null
           ? (map['altitude'] as num).toDouble()
           : null,
-      bearing: map['bearing'] != null ? (map['bearing'] as num).toDouble() : null,
+      bearing: map['bearing'] != null
+          ? (map['bearing'] as num).toDouble()
+          : null,
       movementType: MovementTypeX.fromString(map['movement_type'] as String?),
       trackingState: map['tracking_state'] as String? ?? 'UNKNOWN',
       isInsideSafeZone: (map['is_safe_zone'] as int? ?? 0) == 1,
