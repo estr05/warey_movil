@@ -290,6 +290,7 @@ class TrackingEngine {
           speedKmh: _classifier.smoothedSpeedKmh,
           intervaloAplicado: effectiveLocationInterval.inSeconds,
           motivo: motivo,
+          bearing: position.heading,
           capturedAt: DateTime.now(),
         );
 
@@ -310,6 +311,7 @@ class TrackingEngine {
             speedKmh: _classifier.smoothedSpeedKmh,
             intervaloAplicado: effectiveLocationInterval.inSeconds,
             motivo: 'FORCE_SYNC',
+            bearing: pos.heading,
             capturedAt: DateTime.now(),
           );
           await _locationRepo.processLocationFrame(frame, forceSync: true);

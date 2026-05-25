@@ -48,6 +48,7 @@ class LocationFrame {
   final double? speedKmh;
   final int? intervaloAplicado;
   final String? motivo;
+  final double? bearing;
 
   /// Timestamp de captura de la ubicación.
   final DateTime capturedAt;
@@ -66,6 +67,7 @@ class LocationFrame {
     this.speedKmh,
     this.intervaloAplicado,
     this.motivo,
+    this.bearing,
     required this.capturedAt,
   });
 
@@ -84,6 +86,7 @@ class LocationFrame {
         'speed_kmh': speedKmh,
         'intervalo_aplicado': intervaloAplicado,
         'motivo': motivo,
+        'bearing': bearing,
         'captured_at': capturedAt.toIso8601String(),
       };
 
@@ -102,6 +105,7 @@ class LocationFrame {
         'speed_kmh': speedKmh,
         'intervalo_aplicado': intervaloAplicado,
         'motivo': motivo,
+        'bearing': bearing,
         'captured_at': capturedAt.toIso8601String(),
       };
 
@@ -128,6 +132,7 @@ class LocationFrame {
       speedKmh: map['speed_kmh'] != null ? (map['speed_kmh'] as num).toDouble() : null,
       intervaloAplicado: map['intervalo_aplicado'] as int?,
       motivo: map['motivo'] as String?,
+      bearing: map['bearing'] != null ? (map['bearing'] as num).toDouble() : null,
       capturedAt: DateTime.parse(map['captured_at'] as String),
     );
   }
