@@ -23,7 +23,8 @@ dependencies:
 
   # ── Seguridad y Hardware ──────────────────────────────────────────────────────
   flutter_secure_storage: ^9.2.2     # Almacenamiento cifrado del token Sanctum
-  device_info_plus: ^11.1.1          # Extracción del UUID de hardware (Android/iOS)
+  device_info_plus: ^11.1.1          # Metadatos del dispositivo (modelo, fabricante, OS)
+  package_info_plus: ^8.1.2          # Version de app para fingerprint de handshake
 
   # ── Persistencia Local (Offline Queue) ───────────────────────────────────────
   sqflite: ^2.4.2                    # Base de datos SQLite local para la cola offline

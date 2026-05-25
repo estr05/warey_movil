@@ -17,6 +17,7 @@ import 'dart:developer' as dev;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../data/repositories/safe_place_repository.dart';
 import '../models/geofence_zone.dart';
 
 class GeofenceService {
@@ -68,6 +69,18 @@ class GeofenceService {
     // Re-evaluar posición actual con las nuevas zonas
     if (currentLat != null && currentLng != null) {
       _evaluate(currentLat, currentLng);
+    }
+  }
+
+  /// Sincroniza zonas con el backend.
+  Future<void> syncFromBackend(SafePlaceRepository repo) async {
+    try {
+      final zones = await repo.fetchSafePlaces();
+      updateZones(zones);
+      dev.log('[GeofenceService] Zonas sincronizadas: ${zones.length}', name: 'GeofenceService');
+    } catch (e) {
+      dev.log('[GeofenceService] Error sincronizando zonas: $e', name: 'GeofenceService');
+      // Si falla, mantener las zonas locales (si las hay)
     }
   }
 

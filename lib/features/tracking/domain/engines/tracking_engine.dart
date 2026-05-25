@@ -44,6 +44,7 @@ import 'package:geolocator/geolocator.dart';
 
 import '../../data/repositories/device_status_repository.dart';
 import '../../data/repositories/location_repository.dart';
+import '../../data/repositories/safe_place_repository.dart';
 import '../models/device_status_frame.dart';
 import '../models/geofence_zone.dart';
 import '../models/location_frame.dart';
@@ -142,6 +143,16 @@ class TrackingEngine {
 
     // Iniciar timer de telemetría del dispositivo (siempre fijo)
     _startDeviceStatusTimer();
+
+    // Sincronización periódica de zonas seguras
+    Timer.periodic(const Duration(minutes: 30), (_) async {
+      try {
+        final repo = _ref.read(safePlaceRepositoryProvider);
+        await _geofence.syncFromBackend(repo);
+      } catch (e) {
+        dev.log('[TrackingEngine] Error syncing safe places: $e', name: 'TrackingEngine');
+      }
+    });
   }
 
   void stop() {
@@ -263,6 +274,8 @@ class TrackingEngine {
 
         // ── 5. Construir y enviar el frame enriquecido ─────────────────────
         final zone = _geofence.currentZone;
+        final motivo = stateChanged ? 'STATE_CHANGE' : (movementChanged ? 'MOVEMENT_CHANGE' : (intervalChanged ? 'INTERVAL_CHANGE' : 'PERIODIC'));
+        
         final frame = LocationFrame(
           latitude: position.latitude,
           longitude: position.longitude,
@@ -274,6 +287,9 @@ class TrackingEngine {
           trackingState: _currentState.displayName,
           isInsideSafeZone: _geofence.isInsideSafeZone,
           activeZoneName: zone?.name,
+          speedKmh: _classifier.smoothedSpeedKmh,
+          intervaloAplicado: effectiveLocationInterval.inSeconds,
+          motivo: motivo,
           capturedAt: DateTime.now(),
         );
 
@@ -291,6 +307,9 @@ class TrackingEngine {
             trackingState: _currentState.displayName,
             isInsideSafeZone: _geofence.isInsideSafeZone,
             activeZoneName: zone?.name,
+            speedKmh: _classifier.smoothedSpeedKmh,
+            intervaloAplicado: effectiveLocationInterval.inSeconds,
+            motivo: 'FORCE_SYNC',
             capturedAt: DateTime.now(),
           );
           await _locationRepo.processLocationFrame(frame, forceSync: true);
@@ -468,4 +487,3 @@ final trackingEngineProvider = Provider<TrackingEngine>((ref) {
   ref.onDispose(engine.stop);
   return engine;
 });
-

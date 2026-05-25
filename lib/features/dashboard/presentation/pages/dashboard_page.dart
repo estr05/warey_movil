@@ -14,6 +14,9 @@ import '../../../../core/services/background_service.dart';
 import '../../../../core/services/secure_storage_service.dart';
 import '../../../../core/router/app_router.dart';
 import '../../../../core/services/local_database_service.dart';
+import '../../../../core/security/session_notice_provider.dart';
+import '../../../../core/network/dio_client.dart';
+import 'package:go_router/go_router.dart';
 
 class DashboardPage extends ConsumerStatefulWidget {
   const DashboardPage({super.key});
@@ -22,16 +25,17 @@ class DashboardPage extends ConsumerStatefulWidget {
   ConsumerState<DashboardPage> createState() => _DashboardPageState();
 }
 
-class _DashboardPageState extends ConsumerState<DashboardPage> with SingleTickerProviderStateMixin {
+class _DashboardPageState extends ConsumerState<DashboardPage>
+    with SingleTickerProviderStateMixin {
   late AnimationController _pulseController;
-  
+
   // Real-time data state
   final Battery _battery = Battery();
   int _batteryLevel = 100;
   bool _isCharging = false;
   int _offlineQueueCount = 0;
   String _gpsAccuracy = 'Calculando...';
-  
+
   StreamSubscription<BatteryState>? _batteryStateSubscription;
   Timer? _pollingTimer;
 
@@ -42,20 +46,22 @@ class _DashboardPageState extends ConsumerState<DashboardPage> with SingleTicker
       vsync: this,
       duration: const Duration(seconds: 2),
     )..repeat(reverse: true);
-    
+
     _initRealTimeData();
   }
 
   Future<void> _initRealTimeData() async {
     // 1. Listen to charging state changes in real-time
-    _batteryStateSubscription = _battery.onBatteryStateChanged.listen((BatteryState state) {
+    _batteryStateSubscription = _battery.onBatteryStateChanged.listen((
+      BatteryState state,
+    ) {
       if (mounted) {
         setState(() {
           _isCharging = state == BatteryState.charging;
         });
       }
     });
-    
+
     // 2. Fetch initial battery level
     _batteryLevel = await _battery.batteryLevel;
     if (mounted) setState(() {});
@@ -64,18 +70,27 @@ class _DashboardPageState extends ConsumerState<DashboardPage> with SingleTicker
     _pollingTimer = Timer.periodic(const Duration(seconds: 3), (timer) async {
       _pollData();
     });
-    
+
     // Initial fetch
     _pollData();
   }
-  
+
   Future<void> _pollData() async {
+    final token = await ref.read(secureStorageProvider).readToken();
+    final authToken = ref.read(authStateProvider);
+    if ((token == null || token.isEmpty) && authToken != null) {
+      BackgroundServiceManager.stopService();
+      ref.read(sessionNoticeProvider.notifier).showRevoked();
+      ref.read(authStateProvider.notifier).updateToken(null);
+      return;
+    }
+
     // Get battery level
     final level = await _battery.batteryLevel;
-    
+
     // Get offline queue count from local DB
     final count = await ref.read(localDatabaseProvider).getPendingFramesCount();
-    
+
     // Get last known GPS accuracy (cheap, doesn't wake GPS hardware heavily)
     String accuracyStr = 'Desconocida';
     try {
@@ -137,14 +152,26 @@ class _DashboardPageState extends ConsumerState<DashboardPage> with SingleTicker
     );
 
     if (confirm == true) {
-      // 1. Detener gracefully el servicio en background
+      try {
+        // 1. REVOCAR TOKEN en el servidor ANTES de borrar local
+        final dio = ref.read(dioProvider);
+        await dio.post('auth/logout');
+      } catch (_) {
+        // Si falla (sin conexión), continuar con el borrado local
+      }
+
+      // 2. Detener gracefully el servicio en background
       BackgroundServiceManager.stopService();
 
-      // 2. Eliminar el token de Secure Storage
+      // 3. Eliminar el token de Secure Storage
       await ref.read(secureStorageProvider).deleteToken();
 
-      // 3. Actualizar authStateProvider para que la guardia del router redirija a handshake
+      // 4. Actualizar authStateProvider para que la guardia del router redirija a handshake
       ref.read(authStateProvider.notifier).updateToken(null);
+      
+      if (context.mounted) {
+        context.go(AppRoutes.handshake);
+      }
     }
   }
 
@@ -225,13 +252,17 @@ class _DashboardPageState extends ConsumerState<DashboardPage> with SingleTicker
                                       decoration: BoxDecoration(
                                         shape: BoxShape.circle,
                                         color: Colors.greenAccent.withValues(
-                                          alpha: 0.3 + (_pulseController.value * 0.7),
+                                          alpha:
+                                              0.3 +
+                                              (_pulseController.value * 0.7),
                                         ),
                                         boxShadow: [
                                           BoxShadow(
                                             color: Colors.greenAccent,
-                                            blurRadius: 8 * _pulseController.value,
-                                            spreadRadius: 2 * _pulseController.value,
+                                            blurRadius:
+                                                8 * _pulseController.value,
+                                            spreadRadius:
+                                                2 * _pulseController.value,
                                           ),
                                         ],
                                       ),
@@ -253,14 +284,21 @@ class _DashboardPageState extends ConsumerState<DashboardPage> with SingleTicker
                           ],
                         ),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 6,
+                          ),
                           decoration: BoxDecoration(
                             color: Colors.teal.withValues(alpha: 0.15),
                             borderRadius: BorderRadius.circular(30),
                           ),
                           child: const Row(
                             children: [
-                              Icon(Icons.wifi, size: 14, color: Colors.tealAccent),
+                              Icon(
+                                Icons.wifi,
+                                size: 14,
+                                color: Colors.tealAccent,
+                              ),
                               SizedBox(width: 6),
                               Text(
                                 'ONLINE',
@@ -312,10 +350,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage> with SingleTicker
                 decoration: BoxDecoration(
                   color: const Color(0xFF1E293B),
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                    color: const Color(0xFF334155),
-                    width: 1,
-                  ),
+                  border: Border.all(color: const Color(0xFF334155), width: 1),
                 ),
                 child: Column(
                   children: [
@@ -325,19 +360,34 @@ class _DashboardPageState extends ConsumerState<DashboardPage> with SingleTicker
                       icon: Icons.gps_fixed,
                       color: Colors.tealAccent,
                     ),
-                    Divider(color: const Color(0xFF334155).withValues(alpha: 0.5), height: 24),
+                    Divider(
+                      color: const Color(0xFF334155).withValues(alpha: 0.5),
+                      height: 24,
+                    ),
                     _TelemetryDataRow(
                       label: 'Batería del Nodo',
-                      value: '$_batteryLevel% (${_isCharging ? 'Cargando' : 'Descargando'})',
-                      icon: _isCharging ? Icons.battery_charging_full : Icons.battery_full,
-                      color: _isCharging ? Colors.amberAccent : (_batteryLevel > 20 ? Colors.greenAccent : Colors.redAccent),
+                      value:
+                          '$_batteryLevel% (${_isCharging ? 'Cargando' : 'Descargando'})',
+                      icon: _isCharging
+                          ? Icons.battery_charging_full
+                          : Icons.battery_full,
+                      color: _isCharging
+                          ? Colors.amberAccent
+                          : (_batteryLevel > 20
+                                ? Colors.greenAccent
+                                : Colors.redAccent),
                     ),
-                    Divider(color: const Color(0xFF334155).withValues(alpha: 0.5), height: 24),
+                    Divider(
+                      color: const Color(0xFF334155).withValues(alpha: 0.5),
+                      height: 24,
+                    ),
                     _TelemetryDataRow(
                       label: 'Cola Offline',
                       value: '$_offlineQueueCount frames pendientes',
                       icon: Icons.cloud_done_outlined,
-                      color: _offlineQueueCount > 0 ? Colors.orangeAccent : Colors.lightBlueAccent,
+                      color: _offlineQueueCount > 0
+                          ? Colors.orangeAccent
+                          : Colors.lightBlueAccent,
                     ),
                   ],
                 ),
@@ -357,7 +407,11 @@ class _DashboardPageState extends ConsumerState<DashboardPage> with SingleTicker
                 ),
                 child: const Row(
                   children: [
-                    Icon(Icons.info_outline, color: Colors.tealAccent, size: 24),
+                    Icon(
+                      Icons.info_outline,
+                      color: Colors.tealAccent,
+                      size: 24,
+                    ),
                     SizedBox(width: 16),
                     Expanded(
                       child: Text(

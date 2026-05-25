@@ -22,7 +22,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 
 import '../../data/repositories/telemetry_repository_impl.dart';
-import '../services/sync_service.dart';
 
 // ── Constantes de intervalo dinámico ─────────────────────────────────────────
 
@@ -231,10 +230,6 @@ class TelemetryEngine {
 
 final telemetryEngineProvider = Provider<TelemetryEngine>((ref) {
   final engine = TelemetryEngine(ref.read(telemetryRepositoryProvider));
-
-  // Activar el SyncService para que la cola offline se drene
-  // automáticamente cuando la conectividad se recupera.
-  ref.read(syncServiceProvider);
 
   ref.onDispose(engine.stop);
   return engine;

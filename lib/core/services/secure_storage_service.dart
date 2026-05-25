@@ -11,13 +11,14 @@ class SecureStorageService {
   final FlutterSecureStorage _storage;
 
   SecureStorageService({FlutterSecureStorage? storage})
-      : _storage = storage ?? const FlutterSecureStorage(
-          aOptions: AndroidOptions(
-            encryptedSharedPreferences: true,
-          ),
-        );
+    : _storage =
+          storage ??
+          const FlutterSecureStorage(
+            aOptions: AndroidOptions(encryptedSharedPreferences: true),
+          );
 
   static const String _tokenKey = 'auth_token';
+  static const String _deviceUuidKey = 'device_uuid';
 
   /// Guarda el token de autenticación de forma segura.
   Future<void> saveToken(String token) async {
@@ -32,6 +33,16 @@ class SecureStorageService {
   /// Elimina el token de autenticación guardado.
   Future<void> deleteToken() async {
     await _storage.delete(key: _tokenKey);
+  }
+
+  /// Guarda el UUID estable de esta instalacion.
+  Future<void> saveDeviceUuid(String uuid) async {
+    await _storage.write(key: _deviceUuidKey, value: uuid);
+  }
+
+  /// Lee el UUID estable de esta instalacion. Retorna null si no existe.
+  Future<String?> readDeviceUuid() async {
+    return await _storage.read(key: _deviceUuidKey);
   }
 }
 

@@ -1,7 +1,7 @@
 // lib/features/handshake/presentation/providers/handshake_provider.dart
 //
-// Feature: Handshake — Capa Presentation (Gestión de Estado)
-// StateNotifier que controla el ciclo de vida del proceso de vinculación.
+// Feature: Handshake - Capa Presentation (Gestion de Estado)
+// Controla el ciclo de vida UX del pairing. No valida seguridad localmente.
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -11,106 +11,223 @@ import '../../../../core/services/device_uuid_service.dart';
 import '../../../../core/services/secure_storage_service.dart';
 import '../../../../core/services/background_service.dart';
 import '../../../../core/router/app_router.dart';
+import '../../../tracking/data/repositories/safe_place_repository.dart';
+import '../../../tracking/domain/services/geofence_service.dart';
 
-// ── Definición de estados ─────────────────────────────────────────────────────
+// Definicion de estados
 
-/// Estado del proceso de vinculación. Sealed class de Dart 3 para exhaustividad.
 sealed class HandshakeState {
-  const HandshakeState();
+  final PairingLifecycleStatus visualStatus;
+  const HandshakeState(this.visualStatus);
+
+  DateTime? get cooldownUntil => null;
 }
 
-/// Estado inicial: el formulario está listo para recibir input.
 final class HandshakeIdle extends HandshakeState {
-  const HandshakeIdle();
+  const HandshakeIdle() : super(PairingLifecycleStatus.pending);
 }
 
-/// Validando el código con el servidor. El botón debe bloquearse.
 final class HandshakeLoading extends HandshakeState {
-  const HandshakeLoading();
+  final String message;
+  const HandshakeLoading([this.message = 'Validando codigo...'])
+    : super(PairingLifecycleStatus.pending);
 }
 
-/// El dispositivo fue vinculado con éxito (Success).
 final class Success extends HandshakeState {
-  const Success();
+  final PairedDeviceInfo device;
+  Success(this.device) : super(device.status);
 }
 
-/// El proceso falló. [message] contiene la razón legible para el usuario.
+final class HandshakeConfirmationRequired extends HandshakeState {
+  final PairingConflict conflict;
+  const HandshakeConfirmationRequired(this.conflict)
+    : super(PairingLifecycleStatus.pending);
+}
+
+final class HandshakeCodeExpiredState extends HandshakeState {
+  final String message;
+  @override
+  final DateTime? cooldownUntil;
+
+  const HandshakeCodeExpiredState({
+    required this.message,
+    required this.cooldownUntil,
+  }) : super(PairingLifecycleStatus.pending);
+}
+
+final class HandshakeRevokedState extends HandshakeState {
+  final String message;
+  const HandshakeRevokedState(this.message)
+    : super(PairingLifecycleStatus.revoked);
+}
+
+final class HandshakeCooldown extends HandshakeState {
+  final String message;
+  @override
+  final DateTime cooldownUntil;
+
+  const HandshakeCooldown({required this.message, required this.cooldownUntil})
+    : super(PairingLifecycleStatus.pending);
+}
+
 final class HandshakeError extends HandshakeState {
   final String message;
-  const HandshakeError(this.message);
+  @override
+  final DateTime? cooldownUntil;
+
+  const HandshakeError({
+    required this.message,
+    required PairingLifecycleStatus visualStatus,
+    this.cooldownUntil,
+  }) : super(visualStatus);
 }
 
-// ── Notifier ─────────────────────────────────────────────────────────────────
+// Notifier
 
 class HandshakeNotifier extends StateNotifier<HandshakeState> {
   final HandshakeRepository _repository;
   final DeviceUuidService _deviceUuidService;
   final Ref _ref;
 
+  String? _lastPairingCode;
+  DeviceFingerprint? _lastFingerprint;
+  DateTime? _cooldownUntil;
+
   HandshakeNotifier({
     required HandshakeRepository repository,
     required DeviceUuidService deviceUuidService,
     required Ref ref,
-  })  : _repository = repository,
-        _deviceUuidService = deviceUuidService,
-        _ref = ref,
-        super(const HandshakeIdle());
+  }) : _repository = repository,
+       _deviceUuidService = deviceUuidService,
+       _ref = ref,
+       super(const HandshakeIdle());
 
-  /// Inicia el proceso de vinculación.
-  ///
-  /// El UUID del hardware se obtiene internamente para que la UI
-  /// solo necesite pasar el [pairingCode] tecleado por el usuario.
   Future<void> validatePairingCode(String pairingCode) async {
-    // Evitar doble-tap si ya hay una operación en curso
+    await _runHandshake(pairingCode.trim(), confirmReplacement: false);
+  }
+
+  Future<void> confirmReplacement() async {
+    final code = _lastPairingCode;
+    if (code == null || code.isEmpty) {
+      state = HandshakeError(
+        message: 'No hay codigo pendiente para confirmar.',
+        visualStatus: PairingLifecycleStatus.pending,
+        cooldownUntil: _startCooldown(const Duration(seconds: 2)),
+      );
+      return;
+    }
+
+    await _runHandshake(code, confirmReplacement: true);
+  }
+
+  Future<void> continueToDashboard() async {
+    final token = await _ref.read(secureStorageProvider).readToken();
+    _ref.read(authStateProvider.notifier).updateToken(token);
+  }
+
+  void cancelReplacement() {
+    state = const HandshakeIdle();
+  }
+
+  void reset() {
+    _cooldownUntil = null;
+    state = const HandshakeIdle();
+  }
+
+  Future<void> _runHandshake(
+    String pairingCode, {
+    required bool confirmReplacement,
+  }) async {
     if (state is HandshakeLoading) return;
 
-    state = const HandshakeLoading();
+    final retryAt = _cooldownUntil;
+    if (retryAt != null && DateTime.now().isBefore(retryAt)) {
+      state = HandshakeCooldown(
+        message: 'Espera unos segundos antes de reintentar.',
+        cooldownUntil: retryAt,
+      );
+      return;
+    }
 
-    // 1. Obtener el UUID del hardware de forma transparente
-    final deviceUuid = await _deviceUuidService.getDeviceUuid();
-
-    // 2. Delegar al repositorio
-    final result = await _repository.validatePairingCode(
-      code: pairingCode,
-      deviceUuid: deviceUuid,
+    _lastPairingCode = pairingCode;
+    state = HandshakeLoading(
+      confirmReplacement ? 'Confirmando reemplazo...' : 'Validando codigo...',
     );
 
-    // 3. En caso de éxito, guardar token, arrancar telemetría y actualizar authState
-    if (result is HandshakeSuccess) {
-      // Despertar el hilo nativo de telemetría GPS inmediatamente
-      await BackgroundServiceManager.startService();
+    _lastFingerprint ??= await _deviceUuidService.getDeviceFingerprint();
 
-      // Obtener el token de secure storage para actualizar el provider de autenticación
-      final token = await _ref.read(secureStorageProvider).readToken();
-      _ref.read(authStateProvider.notifier).updateToken(token);
+    final result = await _repository.validatePairingCode(
+      code: pairingCode,
+      fingerprint: _lastFingerprint!,
+      confirmReplacement: confirmReplacement,
+    );
 
-      // Transicionar estado a Success
-      state = const Success();
-    } else if (result is HandshakeFailure) {
-      state = HandshakeError(result.message);
+    await _applyResult(result);
+  }
+
+  Future<void> _applyResult(HandshakeResult result) async {
+    switch (result) {
+      case HandshakeSuccess(:final device):
+        _cooldownUntil = null;
+        await BackgroundServiceManager.startService();
+        final geofenceService = _ref.read(geofenceServiceProvider);
+        final safePlaceRepo = _ref.read(safePlaceRepositoryProvider);
+        await geofenceService.syncFromBackend(safePlaceRepo);
+        state = Success(device);
+        return;
+
+      case HandshakeRequiresConfirmation(:final conflict):
+        _cooldownUntil = null;
+        state = HandshakeConfirmationRequired(conflict);
+        return;
+
+      case HandshakeCodeExpired(:final message, :final cooldown):
+        final retryAt = _startCooldown(cooldown);
+        state = HandshakeCodeExpiredState(
+          message: message,
+          cooldownUntil: retryAt,
+        );
+        return;
+
+      case HandshakeSessionRevoked(:final message):
+        BackgroundServiceManager.stopService();
+        await _ref.read(authStateProvider.notifier).deleteToken();
+        state = HandshakeRevokedState(message);
+        return;
+
+      case HandshakeFailure(
+        :final message,
+        :final visualStatus,
+        :final cooldown,
+      ):
+        final retryAt = _startCooldown(cooldown);
+        state = HandshakeError(
+          message: message,
+          visualStatus: visualStatus,
+          cooldownUntil: retryAt,
+        );
+        return;
     }
   }
 
-  /// Resetea el estado a Idle (ej. cuando el usuario quiere volver a intentar).
-  void reset() {
-    state = const HandshakeIdle();
+  DateTime _startCooldown(Duration duration) {
+    final retryAt = DateTime.now().add(duration);
+    _cooldownUntil = retryAt;
+    return retryAt;
   }
 }
 
-// ── Providers ─────────────────────────────────────────────────────────────────
+// Providers
 
-/// Provider del servicio de UUID (necesita ser expuesto para inyección).
 final deviceUuidServiceProvider = Provider<DeviceUuidService>((ref) {
-  return DeviceUuidService();
+  return DeviceUuidService(secureStorage: ref.watch(secureStorageProvider));
 });
 
-/// Provider del StateNotifier de Handshake.
-/// La UI sólo debe escuchar este provider; no debe importar el Notifier.
 final handshakeProvider =
     StateNotifierProvider<HandshakeNotifier, HandshakeState>((ref) {
-  return HandshakeNotifier(
-    repository: ref.watch(handshakeRepositoryProvider),
-    deviceUuidService: ref.watch(deviceUuidServiceProvider),
-    ref: ref,
-  );
-});
+      return HandshakeNotifier(
+        repository: ref.watch(handshakeRepositoryProvider),
+        deviceUuidService: ref.watch(deviceUuidServiceProvider),
+        ref: ref,
+      );
+    });

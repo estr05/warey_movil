@@ -45,6 +45,10 @@ class LocationFrame {
   /// Nombre de la zona segura activa (null si no está en ninguna).
   final String? activeZoneName;
 
+  final double? speedKmh;
+  final int? intervaloAplicado;
+  final String? motivo;
+
   /// Timestamp de captura de la ubicación.
   final DateTime capturedAt;
 
@@ -59,6 +63,9 @@ class LocationFrame {
     required this.trackingState,
     required this.isInsideSafeZone,
     this.activeZoneName,
+    this.speedKmh,
+    this.intervaloAplicado,
+    this.motivo,
     required this.capturedAt,
   });
 
@@ -74,6 +81,9 @@ class LocationFrame {
         'tracking_state': trackingState,
         'is_safe_zone': isInsideSafeZone,
         'zone_name': activeZoneName,
+        'speed_kmh': speedKmh,
+        'intervalo_aplicado': intervaloAplicado,
+        'motivo': motivo,
         'captured_at': capturedAt.toIso8601String(),
       };
 
@@ -89,6 +99,9 @@ class LocationFrame {
         'tracking_state': trackingState,
         'is_safe_zone': isInsideSafeZone ? 1 : 0,
         'zone_name': activeZoneName,
+        'speed_kmh': speedKmh,
+        'intervalo_aplicado': intervaloAplicado,
+        'motivo': motivo,
         'captured_at': capturedAt.toIso8601String(),
       };
 
@@ -112,6 +125,9 @@ class LocationFrame {
       trackingState: map['tracking_state'] as String? ?? 'UNKNOWN',
       isInsideSafeZone: (map['is_safe_zone'] as int? ?? 0) == 1,
       activeZoneName: map['zone_name'] as String?,
+      speedKmh: map['speed_kmh'] != null ? (map['speed_kmh'] as num).toDouble() : null,
+      intervaloAplicado: map['intervalo_aplicado'] as int?,
+      motivo: map['motivo'] as String?,
       capturedAt: DateTime.parse(map['captured_at'] as String),
     );
   }

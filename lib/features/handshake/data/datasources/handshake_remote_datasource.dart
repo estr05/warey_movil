@@ -1,75 +1,58 @@
 // lib/features/handshake/data/datasources/handshake_remote_datasource.dart
 //
-// Feature: Handshake — Capa Data (Remote DataSource)
-// Responsabilidad ÚNICA: ejecutar la petición HTTP al endpoint de vinculación.
-// No contiene lógica de negocio; sólo traduce la respuesta a un Map tipado.
+// Feature: Handshake - Capa Data (Remote DataSource)
+// Responsabilidad unica: ejecutar la peticion HTTP al endpoint de vinculacion.
+// No decide seguridad ni ownership; eso pertenece al backend.
 
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/network/dio_client.dart';
+import '../../../../core/services/device_uuid_service.dart';
 
-/// Modelo interno de la respuesta del handshake.
-/// Representa el campo `data` del contrato de la API DevUbi.
-class HandshakeResponseData {
-  final String token;
-
-  const HandshakeResponseData({required this.token});
-
-  factory HandshakeResponseData.fromJson(Map<String, dynamic> json) {
-    return HandshakeResponseData(
-      token: json['token'] as String,
-    );
-  }
-}
-
-/// DataSource remoto para el módulo de Handshake.
+/// DataSource remoto para el modulo de Handshake.
 class HandshakeRemoteDataSource {
   final Dio _dio;
 
   const HandshakeRemoteDataSource(this._dio);
 
-  /// Envía el código de emparejamiento y el UUID de hardware al servidor.
+  /// Envia el codigo, el UUID estable y el fingerprint visual del telefono.
   ///
-  /// Contrato del endpoint:
   /// POST /api/v1/devices/handshake
-  /// Body: { "pairing_code": "XXXX-XXXX", "device_uuid": "[uuid]" }
-  ///
-  /// Respuesta exitosa (200):
-  /// { "success": true, "message": "...", "data": { "token": "..." } }
-  ///
-  /// Lanza [DioException] en caso de error HTTP o de red.
-  Future<HandshakeResponseData> validatePairingCode({
+  /// Body:
+  /// {
+  ///   "pairing_code": "WRY-XXXX-XXXX",
+  ///   "device_uuid": "...",
+  ///   "model": "...",
+  ///   "manufacturer": "...",
+  ///   "android_version": "...",
+  ///   "app_version": "...",
+  ///   "device_fingerprint": { ... },
+  ///   "confirm_replacement": true|false
+  /// }
+  Future<Map<String, dynamic>> validatePairingCode({
     required String code,
-    required String uuid,
+    required DeviceFingerprint fingerprint,
+    bool confirmReplacement = false,
   }) async {
     final response = await _dio.post<Map<String, dynamic>>(
       'devices/handshake',
       data: {
         'pairing_code': code,
-        'device_uuid': uuid,
+        ...fingerprint.toJson(),
+        'device_fingerprint': fingerprint.toJson(),
+        if (confirmReplacement) 'confirm_replacement': true,
       },
     );
 
-    // El contrato de la API siempre retorna data en response.data['data']
-    final responseBody = response.data;
-    if (responseBody == null || responseBody['data'] == null) {
-      throw DioException(
-        requestOptions: response.requestOptions,
-        message: 'Respuesta del servidor inesperada: campo data ausente.',
-        type: DioExceptionType.badResponse,
-      );
-    }
-
-    return HandshakeResponseData.fromJson(
-      responseBody['data'] as Map<String, dynamic>,
-    );
+    return response.data ?? <String, dynamic>{};
   }
 }
 
 /// Provider del DataSource.
-final handshakeRemoteDataSourceProvider =
-    Provider<HandshakeRemoteDataSource>((ref) {
+final handshakeRemoteDataSourceProvider = Provider<HandshakeRemoteDataSource>((
+  ref,
+) {
   final dio = ref.watch(dioProvider);
   return HandshakeRemoteDataSource(dio);
 });

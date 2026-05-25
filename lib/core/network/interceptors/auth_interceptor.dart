@@ -1,14 +1,15 @@
 // lib/core/network/interceptors/auth_interceptor.dart
 //
-// Capa Core — Interceptor de Autenticación y Seguridad
-// Responsabilidad: Inyectar el token Bearer en cada petición saliente
-// y manejar de forma global los errores 401 (No Autorizado), forzando
-// la limpieza del token y redirección a HandshakePage.
+// Capa Core - Interceptor de Autenticacion y Seguridad
+// Inyecta Bearer token y reacciona globalmente a revocaciones 401.
 
 import 'package:dio/dio.dart';
+import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../services/secure_storage_service.dart';
+
 import '../../router/app_router.dart';
+import '../../security/session_notice_provider.dart';
+import '../../services/secure_storage_service.dart';
 
 class AuthInterceptor extends Interceptor {
   final Ref _ref;
@@ -20,7 +21,6 @@ class AuthInterceptor extends Interceptor {
     RequestOptions options,
     RequestInterceptorHandler handler,
   ) async {
-    // Intentar leer el token del almacenamiento seguro
     final secureStorage = _ref.read(secureStorageProvider);
     final token = await secureStorage.readToken();
 
@@ -36,18 +36,34 @@ class AuthInterceptor extends Interceptor {
     DioException err,
     ErrorInterceptorHandler handler,
   ) async {
-    // Si la respuesta del servidor es 401 (No Autorizado), el token expiró o fue revocado
     if (err.response?.statusCode == 401) {
       try {
-        // Borrar el token reactivamente. 
-        // Si estamos en el UI isolate, esto activará el Router Guard y redirigirá al Handshake.
-        // Si estamos en el background isolate, simplemente borrará la persistencia.
+        final message =
+            _extractMessage(err.response?.data) ??
+            'La sesion fue revocada por el backend. Vincula el telefono nuevamente.';
+
+        // El backend decide la revocacion; Flutter solo apaga tracking y
+        // devuelve al usuario al flujo de pairing.
+        FlutterBackgroundService().invoke('stopService');
         await _ref.read(authStateProvider.notifier).deleteToken();
-      } catch (e) {
-        // Manejo silencioso en caso de error de riverpod
+        _ref.read(sessionNoticeProvider.notifier).showRevoked(message);
+      } catch (_) {
+        // En background puede no existir el mismo arbol de providers de UI.
       }
     }
 
     return handler.next(err);
+  }
+
+  String? _extractMessage(dynamic data) {
+    if (data is Map<String, dynamic>) {
+      final message = data['message'] ?? data['error'];
+      return message?.toString();
+    }
+    if (data is Map) {
+      final message = data['message'] ?? data['error'];
+      return message?.toString();
+    }
+    return null;
   }
 }
