@@ -2,7 +2,7 @@ name: mobile_app
 description: "DevUbi / Warey — Cliente móvil para monitoreo de ubicación en tiempo real."
 publish_to: 'none'
 
-version: 1.0.0+1
+version: 1.0.1+2
 
 environment:
   sdk: ^3.11.1

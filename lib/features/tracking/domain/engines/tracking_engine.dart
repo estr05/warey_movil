@@ -99,6 +99,10 @@ class TrackingEngine {
   DateTime? _lastProcessTime;
   StreamSubscription<Position>? _positionStream;
 
+  // ── Telemetría Interna / Debugging ────────────────────────────────────────
+  int _discardedPointsCount = 0;
+  int get discardedPointsCount => _discardedPointsCount;
+
   /// Estado actual de la pantalla del dispositivo.
   /// Se inicializa en [true] (pantalla encendida al arrancar el servicio).
   /// Actualizable externamente mediante [setScreenActive] desde el observador
@@ -267,6 +271,24 @@ class TrackingEngine {
 
   Future<void> _handleNewPosition(Position position, {bool forceSync = false, bool isFromStream = false}) async {
     try {
+      // ── 0. Filtros Espaciales y Cinemáticos Locales ─────────────────────
+      if (!forceSync) {
+        // Filtrar precisión pobre a menos que sea un forceSync de salvaguarda
+        if (position.accuracy > 65.0) {
+          dev.log('[TrackingEngine] Filtro Espacial: Precisión pobre (${position.accuracy.toStringAsFixed(1)}m). Descartando.', name: 'TrackingEngine');
+          _discardedPointsCount++;
+          return;
+        }
+
+        // Filtrar saltos de velocidad inverosímiles (>180 km/h) si el último estado no era vehículo
+        final speedKmh = position.speed * 3.6;
+        if (speedKmh > 180.0 && _currentMovementType != MovementType.vehicle) {
+          dev.log('[TrackingEngine] Filtro Espacial: Velocidad irreal (${speedKmh.toStringAsFixed(1)} km/h). Descartando.', name: 'TrackingEngine');
+          _discardedPointsCount++;
+          return;
+        }
+      }
+
       final now = DateTime.now();
       final interval = effectiveLocationInterval;
 

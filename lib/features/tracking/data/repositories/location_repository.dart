@@ -89,41 +89,68 @@ class LocationRepository {
     await _enqueueLocally(frame);
   }
 
-  /// Drena la cola offline de ubicación enviando los frames pendientes.
+  /// Drena la cola offline de ubicación enviando los frames pendientes en lotes.
   /// Llamar cuando se recupere la conectividad.
   Future<void> drainOfflineQueue() async {
-    final frames = await _localDb.getPendingLocationFrames();
-    if (frames.isEmpty) return;
+    final rows = await _localDb.getPendingLocationFrames();
+    if (rows.isEmpty) return;
 
     dev.log(
-      '[LocationRepo] Drenando ${frames.length} frame(s) de ubicación offline...',
+      '[LocationRepo] Drenando ${rows.length} frame(s) de ubicación offline en lotes...',
       name: 'LocationRepository',
     );
 
     int success = 0;
     int failed = 0;
+    const batchSize = 50;
 
-    for (final row in frames) {
-      final id = row[LocalDatabaseService.colId] as int?;
-      if (id == null) continue;
+    for (var i = 0; i < rows.length; i += batchSize) {
+      final batchRows = rows.sublist(i, math.min(i + batchSize, rows.length));
+      final batchIds = <int>[];
+      final batchPayloads = <Map<String, dynamic>>[];
+
+      for (final row in batchRows) {
+        final id = row[LocalDatabaseService.colId] as int?;
+        if (id != null) {
+          try {
+            final frame = LocationFrame.fromLocalMap(row);
+            batchIds.add(id);
+            batchPayloads.add(frame.toApiJson());
+          } catch (e) {
+            dev.log('[LocationRepo] Error parseando frame #$id: $e', name: 'LocationRepository');
+          }
+        }
+      }
+
+      if (batchPayloads.isEmpty) continue;
 
       try {
-        final frame = LocationFrame.fromLocalMap(row);
-        final sent = await _trySendToApi(frame);
-
-        if (sent) {
-          await _localDb.deleteLocationFrames([id]);
-          success++;
+        final response = await _dio.post<Map<String, dynamic>>(
+          'location/batch',
+          data: {'frames': batchPayloads},
+        );
+        
+        final status = response.statusCode ?? 0;
+        if (status == 200 || status == 201) {
+          await _localDb.deleteLocationFrames(batchIds);
+          success += batchPayloads.length;
         } else {
-          failed++;
+          dev.log('[LocationRepo] Servidor rechazó lote — status: $status', name: 'LocationRepository');
+          failed += batchPayloads.length;
         }
+      } on DioException catch (e) {
+        dev.log(
+          '[LocationRepo] Error de red enviando lote: ${e.message}',
+          name: 'LocationRepository',
+        );
+        failed += batchPayloads.length;
       } catch (e) {
         dev.log(
-          '[LocationRepo] Error procesando frame offline #$id: $e',
+          '[LocationRepo] Error inesperado enviando lote: $e',
           name: 'LocationRepository',
           error: e,
         );
-        failed++;
+        failed += batchPayloads.length;
       }
     }
 

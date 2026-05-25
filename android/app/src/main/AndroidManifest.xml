@@ -23,6 +23,9 @@
     <!-- Wake Lock: mantiene la CPU activa durante la transmisión de telemetría -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
+    <!-- Permite solicitar exclusión de optimización de batería (crucial para MIUI/Android) -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+
     <!-- Permite que el servicio se reinicie automáticamente cuando el dispositivo arranca -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 

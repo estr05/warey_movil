@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:battery_plus/battery_plus.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import '../../../../core/services/background_service.dart';
 import '../../../../core/services/secure_storage_service.dart';
@@ -51,6 +52,11 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
   }
 
   Future<void> _initRealTimeData() async {
+    // 0. Request battery optimization ignore to ensure background survival
+    if (await Permission.ignoreBatteryOptimizations.isDenied) {
+      await Permission.ignoreBatteryOptimizations.request();
+    }
+
     // 1. Listen to charging state changes in real-time
     _batteryStateSubscription = _battery.onBatteryStateChanged.listen((
       BatteryState state,

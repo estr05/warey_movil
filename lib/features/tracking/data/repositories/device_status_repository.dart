@@ -14,6 +14,7 @@
 //   - Esto garantiza visibilidad completa del dispositivo incluso dentro de zonas seguras.
 
 import 'dart:developer' as dev;
+import 'dart:math' as math;
 
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:dio/dio.dart';
@@ -51,40 +52,67 @@ class DeviceStatusRepository {
     await _enqueueLocally(frame);
   }
 
-  /// Drena la cola offline de estado del dispositivo.
+  /// Drena la cola offline de estado del dispositivo en lotes.
   Future<void> drainOfflineQueue() async {
-    final frames = await _localDb.getPendingDeviceStatusFrames();
-    if (frames.isEmpty) return;
+    final rows = await _localDb.getPendingDeviceStatusFrames();
+    if (rows.isEmpty) return;
 
     dev.log(
-      '[DeviceStatusRepo] Drenando ${frames.length} frame(s) de estado offline...',
+      '[DeviceStatusRepo] Drenando ${rows.length} frame(s) de estado offline en lotes...',
       name: 'DeviceStatusRepository',
     );
 
     int success = 0;
     int failed = 0;
+    const batchSize = 50;
 
-    for (final row in frames) {
-      final id = row[LocalDatabaseService.colId] as int?;
-      if (id == null) continue;
+    for (var i = 0; i < rows.length; i += batchSize) {
+      final batchRows = rows.sublist(i, math.min(i + batchSize, rows.length));
+      final batchIds = <int>[];
+      final batchPayloads = <Map<String, dynamic>>[];
+
+      for (final row in batchRows) {
+        final id = row[LocalDatabaseService.colId] as int?;
+        if (id != null) {
+          try {
+            final frame = DeviceStatusFrame.fromLocalMap(row);
+            batchIds.add(id);
+            batchPayloads.add(frame.toApiJson());
+          } catch (e) {
+            dev.log('[DeviceStatusRepo] Error parseando frame #$id: $e', name: 'DeviceStatusRepository');
+          }
+        }
+      }
+
+      if (batchPayloads.isEmpty) continue;
 
       try {
-        final frame = DeviceStatusFrame.fromLocalMap(row);
-        final sent = await _trySendToApi(frame);
-
-        if (sent) {
-          await _localDb.deleteDeviceStatusFrames([id]);
-          success++;
+        final response = await _dio.post<Map<String, dynamic>>(
+          'device-status/batch',
+          data: {'frames': batchPayloads},
+        );
+        
+        final status = response.statusCode ?? 0;
+        if (status == 200 || status == 201) {
+          await _localDb.deleteDeviceStatusFrames(batchIds);
+          success += batchPayloads.length;
         } else {
-          failed++;
+          dev.log('[DeviceStatusRepo] Servidor rechazó lote — status: $status', name: 'DeviceStatusRepository');
+          failed += batchPayloads.length;
         }
+      } on DioException catch (e) {
+        dev.log(
+          '[DeviceStatusRepo] Error de red enviando lote: ${e.message}',
+          name: 'DeviceStatusRepository',
+        );
+        failed += batchPayloads.length;
       } catch (e) {
         dev.log(
-          '[DeviceStatusRepo] Error procesando frame offline #$id: $e',
+          '[DeviceStatusRepo] Error inesperado enviando lote: $e',
           name: 'DeviceStatusRepository',
           error: e,
         );
-        failed++;
+        failed += batchPayloads.length;
       }
     }
 

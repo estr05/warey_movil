@@ -158,6 +158,7 @@ class LocalDatabaseService {
         $colCapturedAt      TEXT    NOT NULL
       )
     ''');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_location_captured_at ON $_tableLocation($colCapturedAt)');
   }
 
   Future<void> _createTableDeviceStatus(Database db) async {
@@ -175,6 +176,7 @@ class LocalDatabaseService {
         $colCapturedAt      TEXT    NOT NULL
       )
     ''');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_status_captured_at ON $_tableDeviceStatus($colCapturedAt)');
   }
 
   // ── API Pública — Tabla Legacy ──────────────────────────────────────────────

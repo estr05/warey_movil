@@ -127,7 +127,7 @@ class BackgroundServiceManager {
       _kChannelId,
       _kChannelName,
       description: _kChannelDescription,
-      importance: Importance.low, // Low para no interrumpir al usuario
+      importance: Importance.max, // Max para evitar cierres agresivos por el SO
       playSound: false,
       enableVibration: false,
     );
@@ -158,10 +158,11 @@ class BackgroundServiceManager {
       androidConfiguration: AndroidConfiguration(
         onStart: onStart,
         autoStart: false,
+        autoStartOnBoot: true, // Reinicio automático cuando el dispositivo enciende
         isForegroundMode: true,
         notificationChannelId: _kChannelId,
         initialNotificationTitle: _kChannelName,
-        initialNotificationContent: 'Rastreo inteligente listo...',
+        initialNotificationContent: 'Rastreo inteligente activo...',
         foregroundServiceNotificationId: _kNotificationId,
       ),
       iosConfiguration: IosConfiguration(
