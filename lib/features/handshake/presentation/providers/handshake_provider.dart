@@ -183,6 +183,10 @@ class HandshakeNotifier extends StateNotifier<HandshakeState> {
                 .toList();
             _ref.read(geofenceServiceProvider).updateZones(zones);
           }
+
+          // Consumir GET /api/v1/auth/me para verificar token y usuario pos-login
+          final authMe = await dio.get('auth/me');
+          dev.log('[Handshake] Usuario autenticado: ${authMe.data}');
         } catch (e) {
           // Fallo silencioso — el tracking arranca con zonas vacías
           dev.log('[Handshake] No se pudieron cargar zonas seguras: $e');

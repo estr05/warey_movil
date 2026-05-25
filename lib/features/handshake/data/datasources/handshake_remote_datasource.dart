@@ -41,7 +41,7 @@ class HandshakeRemoteDataSource {
         'pairing_code': code,
         ...fingerprint.toJson(),
         'device_fingerprint': fingerprint.toJson(),
-        if (confirmReplacement) 'confirm_replacement': true,
+        if (confirmReplacement) 'force': true,
       },
     );
 

@@ -30,9 +30,9 @@ class DeviceFingerprint {
   Map<String, dynamic> toJson() {
     return {
       'device_uuid': deviceUuid,
-      'model': model,
-      'manufacturer': manufacturer,
-      'android_version': androidVersion,
+      'device_model': model,
+      'device_manufacturer': manufacturer,
+      'os_version': androidVersion,
       'app_version': appVersion,
     };
   }

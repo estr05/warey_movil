@@ -56,19 +56,20 @@ class TelemetryEngine {
   // ── Ciclo de vida ───────────────────────────────────────────────────────────
 
   void start() {
-    if (_isRunning) return;
-    _isRunning = true;
-
-    dev.log(
-      '[TelemetryEngine] Iniciado — intervalo inicial: ${_currentInterval.inSeconds}s.',
-      name: 'TelemetryEngine',
-    );
-
-    // Primera captura inmediata para no esperar el primer tick del timer
-    _captureAndProcess();
-
-    // Inicia el timer periódico con el intervalo actual
-    _scheduleNextCapture();
+    dev.log('[TelemetryEngine] legacy deshabilitado. Se usa TrackingEngine.', name: 'TelemetryEngine');
+    // if (_isRunning) return;
+    // _isRunning = true;
+    //
+    // dev.log(
+    //   '[TelemetryEngine] Iniciado — intervalo inicial: ${_currentInterval.inSeconds}s.',
+    //   name: 'TelemetryEngine',
+    // );
+    //
+    // // Primera captura inmediata para no esperar el primer tick del timer
+    // _captureAndProcess();
+    //
+    // // Inicia el timer periódico con el intervalo actual
+    // _scheduleNextCapture();
   }
 
   void stop() {
