@@ -96,6 +96,8 @@ class TrackingEngine {
 
   // ── Última posición conocida ──────────────────────────────────────────────
   Position? _lastKnownPosition;
+  DateTime? _lastProcessTime;
+  StreamSubscription<Position>? _positionStream;
 
   /// Estado actual de la pantalla del dispositivo.
   /// Se inicializa en [true] (pantalla encendida al arrancar el servicio).
@@ -138,6 +140,9 @@ class TrackingEngine {
     _captureAndProcessLocation();
     _captureAndSendDeviceStatus();
 
+    // Iniciar stream nativo para garantizar el trazado de rutas en background
+    _startPositionStream();
+
     // Iniciar timer de ubicación con el intervalo efectivo actual
     _restartLocationTimer();
 
@@ -158,6 +163,8 @@ class TrackingEngine {
   void stop() {
     _locationTimer?.cancel();
     _locationTimer = null;
+    _positionStream?.cancel();
+    _positionStream = null;
     _deviceStatusTimer?.cancel();
     _deviceStatusTimer = null;
     _geofenceSubscription?.cancel();
@@ -220,6 +227,20 @@ class TrackingEngine {
     await _captureAndSendDeviceStatus();
   }
 
+  // ── Stream Nativo ───────────────────────────────────────────────────────────
+
+  void _startPositionStream() {
+    _positionStream?.cancel();
+    _positionStream = Geolocator.getPositionStream(
+      locationSettings: const LocationSettings(
+        accuracy: LocationAccuracy.high,
+        distanceFilter: 10, // 10 metros para despertar nativamente
+      ),
+    ).listen((position) async {
+      await _handleNewPosition(position, isFromStream: true);
+    });
+  }
+
   // ── Captura de Ubicación ────────────────────────────────────────────────────
 
   Future<void> _captureAndProcessLocation({bool forceSync = false}) async {
@@ -227,8 +248,38 @@ class TrackingEngine {
       final position = await _readGps();
 
       if (position != null) {
-        _lastKnownPosition = position;
-        final previousInterval = effectiveLocationInterval;
+        await _handleNewPosition(position, forceSync: forceSync);
+      } else {
+        // GPS no disponible: enviar última posición conocida si es forceSync
+        if (forceSync && _lastKnownPosition != null) {
+          await _sendLastKnownFallback();
+        }
+      }
+    } catch (e, st) {
+      dev.log(
+        '[TrackingEngine] Error en captura de ubicación: $e',
+        name: 'TrackingEngine',
+        error: e,
+        stackTrace: st,
+      );
+    }
+  }
+
+  Future<void> _handleNewPosition(Position position, {bool forceSync = false, bool isFromStream = false}) async {
+    try {
+      final now = DateTime.now();
+      final interval = effectiveLocationInterval;
+
+      // Throttling: Evitar procesar más rápido que nuestro intervalo dinámico
+      if (!forceSync && _lastProcessTime != null && isFromStream) {
+        if (now.difference(_lastProcessTime!) < interval) {
+          return;
+        }
+      }
+      _lastProcessTime = now;
+
+      _lastKnownPosition = position;
+      final previousInterval = effectiveLocationInterval;
 
         // ── 1. Clasificar movimiento con histéresis multi-nivel ─────────────
         final typeChanged = _classifier.update(position.speed);
@@ -295,36 +346,34 @@ class TrackingEngine {
         );
 
         await _locationRepo.processLocationFrame(frame, forceSync: forceSync);
-      } else {
-        // GPS no disponible: enviar última posición conocida si es forceSync
-        if (forceSync && _lastKnownPosition != null) {
-          final pos = _lastKnownPosition!;
-          final zone = _geofence.currentZone;
-          final frame = LocationFrame(
-            latitude: pos.latitude,
-            longitude: pos.longitude,
-            smoothedSpeedMs: _classifier.smoothedSpeedMs,
-            bearing: pos.heading.isNaN ? null : pos.heading,
-            movementType: _currentMovementType,
-            trackingState: _currentState.displayName,
-            isInsideSafeZone: _geofence.isInsideSafeZone,
-            activeZoneName: zone?.name,
-            speedKmh: _classifier.smoothedSpeedKmh,
-            intervaloAplicado: effectiveLocationInterval.inSeconds,
-            motivo: 'FORCE_SYNC',
-            capturedAt: DateTime.now(),
-          );
-          await _locationRepo.processLocationFrame(frame, forceSync: true);
-        }
-      }
     } catch (e, st) {
       dev.log(
-        '[TrackingEngine] Error en captura de ubicación: $e',
+        '[TrackingEngine] Error en procesamiento de ubicación: $e',
         name: 'TrackingEngine',
         error: e,
         stackTrace: st,
       );
     }
+  }
+
+  Future<void> _sendLastKnownFallback() async {
+    final pos = _lastKnownPosition!;
+    final zone = _geofence.currentZone;
+    final frame = LocationFrame(
+      latitude: pos.latitude,
+      longitude: pos.longitude,
+      smoothedSpeedMs: _classifier.smoothedSpeedMs,
+      bearing: pos.heading.isNaN ? null : pos.heading,
+      movementType: _currentMovementType,
+      trackingState: _currentState.displayName,
+      isInsideSafeZone: _geofence.isInsideSafeZone,
+      activeZoneName: zone?.name,
+      speedKmh: _classifier.smoothedSpeedKmh,
+      intervaloAplicado: effectiveLocationInterval.inSeconds,
+      motivo: 'FORCE_SYNC',
+      capturedAt: DateTime.now(),
+    );
+    await _locationRepo.processLocationFrame(frame, forceSync: true);
   }
 
   // ── Captura de Estado del Dispositivo ──────────────────────────────────────
