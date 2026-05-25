@@ -83,6 +83,8 @@ class TelemetryRepositoryImpl {
       'is_charging': isCharging ? 1 : 0, // SQLite no tiene BOOLEAN nativo
       'connection_type': connectionType,
       'captured_at': DateTime.now().toIso8601String(),
+      'movement_type': 'STATIC',
+      'screen_active': true,
     };
   }
 
@@ -107,6 +109,8 @@ class TelemetryRepositoryImpl {
           // El backend espera boolean real, no 0/1
           'is_charging': (payload['is_charging'] as int) == 1,
           'connection_type': payload['connection_type'],
+          'movement_type': payload['movement_type'],
+          'screen_active': payload['screen_active'],
           'captured_at': payload['captured_at'],
         },
       );

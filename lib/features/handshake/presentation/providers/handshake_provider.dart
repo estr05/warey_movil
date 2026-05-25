@@ -3,6 +3,7 @@
 // Feature: Handshake - Capa Presentation (Gestion de Estado)
 // Controla el ciclo de vida UX del pairing. No valida seguridad localmente.
 
+import 'dart:developer' as dev;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/repositories/handshake_repository_impl.dart';
@@ -11,8 +12,9 @@ import '../../../../core/services/device_uuid_service.dart';
 import '../../../../core/services/secure_storage_service.dart';
 import '../../../../core/services/background_service.dart';
 import '../../../../core/router/app_router.dart';
-import '../../../tracking/data/repositories/safe_place_repository.dart';
+import '../../../../core/network/dio_client.dart';
 import '../../../tracking/domain/services/geofence_service.dart';
+import '../../../tracking/domain/models/geofence_zone.dart';
 
 // Definicion de estados
 
@@ -170,9 +172,19 @@ class HandshakeNotifier extends StateNotifier<HandshakeState> {
       case HandshakeSuccess(:final device):
         _cooldownUntil = null;
         await BackgroundServiceManager.startService();
-        final geofenceService = _ref.read(geofenceServiceProvider);
-        final safePlaceRepo = _ref.read(safePlaceRepositoryProvider);
-        await geofenceService.syncFromBackend(safePlaceRepo);
+        // Cargar zonas seguras desde el backend
+        try {
+          final dio = _ref.read(dioProvider);
+          final response = await dio.get<Map<String, dynamic>>('device/safe-places');
+          final data = response.data?['data'];
+          if (data is List) {
+            final zones = data.map((z) => GeofenceZone.fromJson(z)).toList();
+            _ref.read(geofenceServiceProvider).updateZones(zones);
+          }
+        } catch (e) {
+          // Si falla la carga, el geofencing local arranca con lista vacía
+          dev.log('[Handshake] Error cargando zonas seguras: $e');
+        }
         state = Success(device);
         return;
 
