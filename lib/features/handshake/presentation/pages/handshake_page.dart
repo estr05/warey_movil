@@ -54,10 +54,13 @@ class _HandshakePageState extends ConsumerState<HandshakePage> {
   }
 
   Future<void> _submit() async {
-    final state = ref.read(handshakeProvider);
-    if (state is HandshakeLoading || state is Success) return;
-    if (_cooldownSeconds(state.cooldownUntil) > 0) return;
+    final currentState = ref.read(handshakeProvider);
+    if (currentState is HandshakeLoading || currentState is Success) return;
+    if (_cooldownSeconds(currentState.cooldownUntil) > 0) return;
     if (!(_formKey.currentState?.validate() ?? false)) return;
+
+    // Mostrar feedback visual INMEDIATO antes de pedir permisos
+    ref.read(handshakeProvider.notifier).setLoadingState('Solicitando permisos de ubicaci\u00f3n...');
 
     final permResult = await PermissionService.requestAll();
     if (!mounted) return;

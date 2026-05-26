@@ -23,8 +23,8 @@ final dioProvider = Provider<Dio>((ref) {
     BaseOptions(
       // URL base obtenida dinámicamente según el entorno
       baseUrl: ApiConfig.baseUrl,
-      connectTimeout: const Duration(seconds: 10),
-      receiveTimeout: const Duration(seconds: 10),
+      connectTimeout: const Duration(seconds: 5),
+      receiveTimeout: const Duration(seconds: 5),
       headers: {
         'Accept': 'application/json',
       },

@@ -5,6 +5,8 @@
 
 import 'dart:developer' as dev;
 
+import 'package:dio/dio.dart';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/repositories/handshake_repository_impl.dart';
@@ -103,7 +105,16 @@ class HandshakeNotifier extends StateNotifier<HandshakeState> {
   }) : _repository = repository,
        _deviceUuidService = deviceUuidService,
        _ref = ref,
-       super(const HandshakeIdle());
+       super(const HandshakeIdle()) {
+    // Pre-cargar fingerprint del dispositivo para agilizar el handshake
+    _preloadDeviceFingerprint();
+    // Si la sesión se cierra/se revoca (token vacío o nulo), reseteamos el estado del handshake
+    _ref.listen<String?>(authStateProvider, (previous, next) {
+      if (next == null || next.isEmpty) {
+        reset();
+      }
+    });
+  }
 
   Future<void> validatePairingCode(String pairingCode) async {
     await _runHandshake(pairingCode.trim(), confirmReplacement: false);
@@ -128,8 +139,21 @@ class HandshakeNotifier extends StateNotifier<HandshakeState> {
     _ref.read(authStateProvider.notifier).updateToken(token);
   }
 
+  Future<void> _preloadDeviceFingerprint() async {
+    if (_lastFingerprint != null) return;
+    try {
+      _lastFingerprint = await _deviceUuidService.getDeviceFingerprint();
+    } catch (_) {
+      // Silencioso - se reintentará en _runHandshake si falla
+    }
+  }
+
   void cancelReplacement() {
     state = const HandshakeIdle();
+  }
+
+  void setLoadingState(String message) {
+    state = HandshakeLoading(message);
   }
 
   void reset() {
@@ -141,7 +165,9 @@ class HandshakeNotifier extends StateNotifier<HandshakeState> {
     String pairingCode, {
     required bool confirmReplacement,
   }) async {
-    if (state is HandshakeLoading) return;
+    // GUARD ELIMINADO: _submit() en la UI llama setLoadingState()
+    // ANTES de pedir permisos. Si retornáramos aquí por HandshakeLoading,
+    // el handshake nunca se ejecutaría después de conceder permisos.
 
     final retryAt = _cooldownUntil;
     if (retryAt != null && DateTime.now().isBefore(retryAt)) {
@@ -157,14 +183,24 @@ class HandshakeNotifier extends StateNotifier<HandshakeState> {
       confirmReplacement ? 'Confirmando reemplazo...' : 'Validando codigo...',
     );
 
+    try {
+      // Inicializar el fingerprint del dispositivo si es nulo
+      _lastFingerprint ??= await _deviceUuidService.getDeviceFingerprint();
 
-    final result = await _repository.validatePairingCode(
-      code: pairingCode,
-      fingerprint: _lastFingerprint!,
-      confirmReplacement: confirmReplacement,
-    );
+      final result = await _repository.validatePairingCode(
+        code: pairingCode,
+        fingerprint: _lastFingerprint!,
+        confirmReplacement: confirmReplacement,
+      );
 
-    await _applyResult(result);
+      await _applyResult(result);
+    } catch (e, stackTrace) {
+      dev.log('[Handshake] Error durante el handshake: $e', error: e, stackTrace: stackTrace);
+      state = HandshakeError(
+        message: 'Error al obtener información del dispositivo o procesar la solicitud.',
+        visualStatus: PairingLifecycleStatus.pending,
+      );
+    }
   }
 
   Future<void> _applyResult(HandshakeResult result) async {
@@ -175,7 +211,14 @@ class HandshakeNotifier extends StateNotifier<HandshakeState> {
         // para evitar frames iniciales con isInsideSafeZone = false
         try {
           final dio = _ref.read(dioProvider);
-          final response = await dio.get<Map<String, dynamic>>('device/safe-places');
+          final timeoutOpts = Options(
+            sendTimeout: const Duration(seconds: 5),
+            receiveTimeout: const Duration(seconds: 5),
+          );
+          final response = await dio.get<Map<String, dynamic>>(
+            'device/safe-places',
+            options: timeoutOpts,
+          );
           final data = response.data;
           if (data != null && data['success'] == true && data['data'] != null) {
             final zones = (data['data'] as List)
@@ -185,7 +228,7 @@ class HandshakeNotifier extends StateNotifier<HandshakeState> {
           }
 
           // Consumir GET /api/v1/auth/me para verificar token y usuario pos-login
-          final authMe = await dio.get('auth/me');
+          final authMe = await dio.get('auth/me', options: timeoutOpts);
           dev.log('[Handshake] Usuario autenticado: ${authMe.data}');
         } catch (e) {
           // Fallo silencioso — el tracking arranca con zonas vacías
